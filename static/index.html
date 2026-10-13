@@ -3,582 +3,547 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Family Tree Builder - Create and visualize family trees">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Family Tree Builder - create and visualize family trees">
+    <meta name="color-scheme" content="light dark">
     <title>Family Tree Builder</title>
-
-    <!-- Google Fonts for international support -->
+    <script>
+        // Apply the saved theme before first paint to avoid a flash
+        (function () {
+            try {
+                var t = localStorage.getItem('theme');
+                if (t !== 'light' && t !== 'dark') {
+                    t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                }
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto:wght@400;500&family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans:wght@400;500&family=Poppins:wght@400;500&family=Mukta:wght@400;500&family=Hind:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans:wght@400;600&family=Poppins:wght@400;600&family=Mukta:wght@400;600&family=Hind:wght@400;600&display=swap"
         rel="stylesheet">
-
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 
 <body>
-    <div class="app-container">
-        <!-- Toolbar -->
-        <header class="toolbar">
-            <div class="toolbar-group">
-                <span class="toolbar-title">Family Tree Builder</span>
-                <div class="toolbar-divider"></div>
+    <!-- Icon sprite -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <defs>
+            <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
+            <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></symbol>
+            <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+            <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+            <symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+            <symbol id="i-reset" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+            <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+            <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+            <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+            <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+            <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+            <symbol id="i-arrange" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1.5"/><rect x="2" y="16" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/><path d="M12 8v4M5 16v-4h14v4"/></symbol>
+            <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+            <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+            <symbol id="i-file-new" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/></symbol>
+            <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14"/></symbol>
+            <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M19 8v6M22 11h-6"/></symbol>
+            <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></symbol>
+            <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></symbol>
+            <symbol id="i-edit" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></symbol>
+            <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></symbol>
+            <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+            <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+            <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
+            <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M6 9v6M9 18a6 6 0 0 0 6-6"/></symbol>
+            <symbol id="i-tree" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v4M12 12l-5 4M12 12l5 4"/></symbol>
+            <symbol id="i-link-off" viewBox="0 0 24 24"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71M8 2v3M2 8h3M16 22v-3M22 16h-3"/></symbol>
+        </defs>
+    </svg>
 
-                <!-- File Operations -->
-                <div class="dropdown" id="file-dropdown">
-                    <button class="btn" id="file-btn">File</button>
-                    <div class="dropdown-menu" id="file-menu">
-                        <a class="dropdown-item" id="new-tree-btn">New Tree</a>
-                        <a class="dropdown-item" id="export-json-btn">Export JSON</a>
-                        <a class="dropdown-item" id="import-json-btn">Import JSON</a>
-                        <a class="dropdown-item danger" id="clear-btn">Clear Canvas</a>
+    <div class="app">
+        <!-- Top bar -->
+        <header class="topbar">
+            <div class="topbar-group">
+                <div class="brand">
+                    <div class="brand-mark"><svg><use href="#i-tree"/></svg></div>
+                    <span>Family Tree</span>
+                </div>
+
+                <div class="menu" id="file-menu-wrap">
+                    <button class="btn" id="file-btn" aria-haspopup="true" aria-expanded="false">
+                        <span class="btn-label">File</span><svg class="icon"><use href="#i-chevron"/></svg>
+                    </button>
+                    <div class="menu-list" id="file-menu" role="menu">
+                        <button class="menu-item" id="new-tree-btn"><svg class="icon"><use href="#i-file-new"/></svg>New tree</button>
+                        <div class="menu-sep"></div>
+                        <button class="menu-item" id="import-json-btn"><svg class="icon"><use href="#i-upload"/></svg>Open JSON<span class="kbd">Ctrl O</span></button>
+                        <button class="menu-item" id="export-json-btn"><svg class="icon"><use href="#i-download"/></svg>Save as JSON<span class="kbd">Ctrl S</span></button>
+                        <div class="menu-sep"></div>
+                        <button class="menu-item" id="export-btn"><svg class="icon"><use href="#i-image"/></svg>Export image / PDF</button>
+                        <div class="menu-sep"></div>
+                        <button class="menu-item danger" id="clear-btn"><svg class="icon"><use href="#i-trash"/></svg>Clear canvas</button>
                     </div>
                 </div>
 
-                <button class="btn btn-primary" id="add-person-btn">+ Add Person</button>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- Undo/Redo -->
-                <button class="btn btn-icon" id="undo-btn" title="Undo" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 10h10a5 5 0 0 1 5 5v2M3 10l4-4M3 10l4 4" />
-                    </svg>
+                <button class="btn btn-primary" id="add-person-btn">
+                    <svg class="icon"><use href="#i-plus"/></svg><span class="btn-label">Add person</span>
                 </button>
-                <button class="btn btn-icon" id="redo-btn" title="Redo" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 10H11a5 5 0 0 0-5 5v2M21 10l-4-4M21 10l-4 4" />
-                    </svg>
-                </button>
+
+                <div class="divider"></div>
+
+                <button class="btn btn-icon" id="undo-btn" title="Undo (Ctrl+Z)" disabled><svg class="icon"><use href="#i-undo"/></svg></button>
+                <button class="btn btn-icon" id="redo-btn" title="Redo (Ctrl+Y)" disabled><svg class="icon"><use href="#i-redo"/></svg></button>
             </div>
 
-            <div class="toolbar-group">
-                <!-- Layout Toggle -->
-                <div class="dropdown" id="layout-dropdown">
-                    <button class="btn" id="layout-btn">Layout: Top-Down</button>
-                    <div class="dropdown-menu" id="layout-menu">
-                        <a class="dropdown-item" data-layout="top-down">Top-Down</a>
-                        <a class="dropdown-item" data-layout="left-right">Left-Right</a>
-                    </div>
-                </div>
-
-                <button class="btn" id="auto-layout-btn">Auto Arrange</button>
-
-                <div class="toolbar-divider"></div>
-
-                <button class="btn" id="settings-btn">Settings</button>
-                <button class="btn" id="export-btn">Export</button>
+            <div class="topbar-group">
+                <button class="btn" id="auto-layout-btn" title="Auto arrange">
+                    <svg class="icon"><use href="#i-arrange"/></svg><span class="btn-label">Arrange</span>
+                </button>
+                <button class="btn" id="export-btn-top" title="Export image or PDF">
+                    <svg class="icon"><use href="#i-download"/></svg><span class="btn-label">Export</span>
+                </button>
+                <div class="divider"></div>
+                <button class="btn btn-icon" id="settings-btn" title="Appearance settings"><svg class="icon"><use href="#i-settings"/></svg></button>
+                <button class="btn btn-icon" id="theme-btn" title="Toggle dark mode">
+                    <svg class="icon theme-sun"><use href="#i-sun"/></svg>
+                    <svg class="icon theme-moon"><use href="#i-moon"/></svg>
+                </button>
             </div>
         </header>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Canvas -->
-            <div class="canvas-container" id="canvas-container">
-                <svg id="tree-canvas">
-                    <defs>
-                        <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                            <path d="M0,0 L0,6 L9,3 z" fill="#555" />
-                        </marker>
-                    </defs>
+        <!-- Workspace -->
+        <main class="workspace">
+            <div class="canvas-wrap" id="canvas-container">
+                <svg id="tree-canvas" xmlns="http://www.w3.org/2000/svg">
                     <g id="canvas-group">
                         <g id="lines-layer"></g>
                         <g id="nodes-layer"></g>
                     </g>
                 </svg>
 
-                <!-- Empty State -->
                 <div class="empty-state" id="empty-state">
-                    <h3>No Family Members Yet</h3>
-                    <p>Click "Add Person" to start building your family tree</p>
-                    <button class="btn btn-primary" id="empty-add-btn">+ Add First Person</button>
+                    <div class="empty-illustration"><svg><use href="#i-tree"/></svg></div>
+                    <h2>Start your family tree</h2>
+                    <p>Add the first person, then grow the tree by adding spouses and children from their card.</p>
+                    <div class="empty-actions">
+                        <button class="btn btn-primary" id="empty-add-btn"><svg class="icon"><use href="#i-plus"/></svg>Add first person</button>
+                        <button class="btn btn-outline" id="empty-import-btn"><svg class="icon"><use href="#i-upload"/></svg>Open JSON</button>
+                    </div>
                 </div>
+
+                <div class="canvas-controls">
+                    <button class="btn" id="zoom-out-btn" title="Zoom out (-)"><svg class="icon"><use href="#i-minus"/></svg></button>
+                    <span class="zoom-level" id="zoom-level" title="Reset zoom">100%</span>
+                    <button class="btn" id="zoom-in-btn" title="Zoom in (+)"><svg class="icon"><use href="#i-plus"/></svg></button>
+                    <button class="btn" id="fit-btn" title="Fit to screen (F)"><svg class="icon"><use href="#i-fit"/></svg></button>
+                </div>
+                <div class="canvas-hint">Scroll to zoom · Drag background to pan · Right-click a person for actions</div>
             </div>
 
-            <!-- Side Panel -->
-            <aside class="side-panel" id="side-panel">
+            <aside class="side-panel collapsed" id="side-panel">
                 <div class="panel-header">
-                    <h3 id="panel-title">Person Details</h3>
-                    <button class="modal-close" id="close-panel">&times;</button>
+                    <h3>Person</h3>
+                    <button class="btn btn-icon btn-sm" id="close-panel" title="Close"><svg class="icon"><use href="#i-x"/></svg></button>
                 </div>
-                <div class="panel-content" id="panel-content">
-                    <!-- Dynamic content -->
-                </div>
+                <div class="panel-content" id="panel-content"></div>
             </aside>
         </main>
 
-        <!-- Status Bar -->
-        <footer class="status-bar">
+        <footer class="statusbar">
             <span id="status-text">Ready</span>
-            <span id="person-count">0 persons</span>
+            <div class="status-right">
+                <span id="selection-count"></span>
+                <span id="person-count">0 people</span>
+            </div>
         </footer>
     </div>
 
-    <!-- Context Menu -->
-    <div class="context-menu" id="context-menu">
-        <ul>
-            <li class="context-menu-item" id="ctx-add-spouse">Add Spouse</li>
-            <li class="context-menu-item" id="ctx-add-child">Add Child</li>
-            <li class="context-menu-divider"></li>
-            <li class="context-menu-item" id="ctx-edit">Edit Person</li>
-            <li class="context-menu-divider"></li>
-            <li id="ctx-delete" class="context-menu-item danger">Delete Person</li>
-            <li class="context-menu-divider"></li>
-            <li class="context-menu-item" id="ctx-select-branch">Select Branch</li>
-        </ul>
+    <!-- Context menu -->
+    <div class="context-menu" id="context-menu" role="menu">
+        <button class="menu-item" id="ctx-add-spouse"><svg class="icon"><use href="#i-heart"/></svg>Add spouse</button>
+        <button class="menu-item" id="ctx-add-child"><svg class="icon"><use href="#i-user-plus"/></svg>Add child</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="ctx-edit"><svg class="icon"><use href="#i-edit"/></svg>Edit person</button>
+        <button class="menu-item" id="ctx-select-branch"><svg class="icon"><use href="#i-branch"/></svg>Select branch</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item danger" id="ctx-delete"><svg class="icon"><use href="#i-trash"/></svg>Delete person<span class="kbd">Del</span></button>
     </div>
 
-    <!-- Add/Edit Person Modal -->
+    <!-- Add / edit person -->
     <div class="modal-overlay" id="person-modal">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="person-modal-title">
             <div class="modal-header">
-                <h3 id="person-modal-title">Add Person</h3>
-                <button class="modal-close" id="person-modal-close">&times;</button>
+                <h3 id="person-modal-title">Add person</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
             </div>
             <div class="modal-body">
-                <form id="person-form">
+                <form id="person-form" autocomplete="off">
                     <input type="hidden" id="person-id">
-
                     <div class="form-group">
-                        <label for="person-name">Name *</label>
-                        <input type="text" class="form-control" id="person-name" required placeholder="Full name">
+                        <label for="person-name">Name</label>
+                        <input type="text" class="form-control" id="person-name" required maxlength="200" placeholder="Full name">
                     </div>
-
                     <div class="form-group">
-                        <label>Gender</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="gender" value="male"> Male
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="gender" value="female"> Female
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="gender" value="unknown" checked> Unspecified
-                            </label>
+                        <span class="form-label">Gender</span>
+                        <div class="segmented">
+                            <label><input type="radio" name="gender" value="male">Male</label>
+                            <label><input type="radio" name="gender" value="female">Female</label>
+                            <label><input type="radio" name="gender" value="unknown" checked>Unspecified</label>
                         </div>
                     </div>
-
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="person-dob">Date of Birth</label>
-                            <input type="text" class="form-control" id="person-dob"
-                                placeholder="e.g., 1950 or 15 Jan 1950">
+                            <label for="person-dob">Born</label>
+                            <input type="text" class="form-control" id="person-dob" maxlength="64" placeholder="1950 or 15 Jan 1950">
                         </div>
                         <div class="form-group">
-                            <label for="person-dod">Date of Death</label>
-                            <input type="text" class="form-control" id="person-dod" placeholder="Leave blank if alive">
+                            <label for="person-dod">Died</label>
+                            <input type="text" class="form-control" id="person-dod" maxlength="64" placeholder="Leave blank if living">
                         </div>
                     </div>
-
                     <div class="form-group">
-                        <label for="person-photo">Photo</label>
-                        <input type="file" class="form-control" id="person-photo" accept="image/*">
-                        <div id="photo-preview" style="margin-top: 8px;"></div>
+                        <span class="form-label">Photo</span>
+                        <div class="photo-picker">
+                            <div class="avatar" id="photo-preview">?</div>
+                            <div class="photo-actions">
+                                <label class="btn btn-outline btn-sm" for="person-photo"><svg class="icon"><use href="#i-image"/></svg>Choose photo</label>
+                                <button type="button" class="btn btn-sm btn-danger" id="photo-remove-btn">Remove</button>
+                                <input type="file" id="person-photo" accept="image/*">
+                            </div>
+                        </div>
+                        <div class="form-hint">Photos are resized in your browser before upload.</div>
                     </div>
-
                     <div class="form-group">
                         <label for="person-notes">Notes</label>
-                        <textarea class="form-control" id="person-notes"
-                            placeholder="Additional information"></textarea>
+                        <textarea class="form-control" id="person-notes" maxlength="5000" placeholder="Anything worth remembering"></textarea>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="person-cancel-btn">Cancel</button>
+                <button class="btn btn-outline" data-close>Cancel</button>
                 <button class="btn btn-primary" id="person-save-btn">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- Add Spouse Modal -->
+    <!-- Add spouse -->
     <div class="modal-overlay" id="spouse-modal">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true">
             <div class="modal-header">
-                <h3>Add Spouse</h3>
-                <button class="modal-close" id="spouse-modal-close">&times;</button>
+                <h3>Add spouse</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
             </div>
             <div class="modal-body">
+                <div class="form-context"><svg class="icon"><use href="#i-heart"/></svg><span>Spouse of <strong id="spouse-for-name"></strong></span></div>
                 <div class="form-group">
-                    <label>Select or create spouse for: <strong id="spouse-for-name"></strong></label>
+                    <label for="new-spouse-name">Name</label>
+                    <input type="text" class="form-control" id="new-spouse-name" maxlength="200" placeholder="Full name">
                 </div>
-
                 <div class="form-group">
-                    <label for="new-spouse-name">Spouse Name</label>
-                    <input type="text" class="form-control" id="new-spouse-name" placeholder="Name">
-
-                    <div class="radio-group" style="margin-top: 8px;">
-                        <label class="radio-label">
-                            <input type="radio" name="spouse-gender" value="male"> Male
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="spouse-gender" value="female"> Female
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="spouse-gender" value="unknown"> Unspecified
-                        </label>
+                    <span class="form-label">Gender</span>
+                    <div class="segmented">
+                        <label><input type="radio" name="spouse-gender" value="male">Male</label>
+                        <label><input type="radio" name="spouse-gender" value="female">Female</label>
+                        <label><input type="radio" name="spouse-gender" value="unknown">Unspecified</label>
                     </div>
                 </div>
-
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="spouse-dob">Date of Birth</label>
-                        <input type="text" class="form-control" id="spouse-dob" placeholder="e.g. 1985">
+                        <label for="spouse-dob">Born</label>
+                        <input type="text" class="form-control" id="spouse-dob" maxlength="64" placeholder="e.g. 1985">
                     </div>
                     <div class="form-group">
-                        <label for="spouse-dod">Date of Death</label>
-                        <input type="text" class="form-control" id="spouse-dod" placeholder="Optional">
+                        <label for="spouse-dod">Died</label>
+                        <input type="text" class="form-control" id="spouse-dod" maxlength="64" placeholder="Optional">
                     </div>
                 </div>
-
+                <div class="form-group">
+                    <label for="marriage-date">Married</label>
+                    <input type="text" class="form-control" id="marriage-date" maxlength="64" placeholder="Optional, e.g. 2010">
+                </div>
                 <div class="form-group">
                     <label for="spouse-notes">Notes</label>
-                    <textarea class="form-control" id="spouse-notes" rows="2"
-                        placeholder="Optional notes..."></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label for="marriage-date">Marriage Date</label>
-                    <input type="text" class="form-control" id="marriage-date" placeholder="Optional">
+                    <textarea class="form-control" id="spouse-notes" maxlength="5000" rows="2" placeholder="Optional"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="spouse-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="spouse-save-btn">Add Spouse</button>
+                <button class="btn btn-outline" data-close>Cancel</button>
+                <button class="btn btn-primary" id="spouse-save-btn">Add spouse</button>
             </div>
         </div>
     </div>
 
-    <!-- Add Child Modal -->
+    <!-- Add child -->
     <div class="modal-overlay" id="child-modal">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true">
             <div class="modal-header">
-                <h3>Add Child</h3>
-                <button class="modal-close" id="child-modal-close">&times;</button>
+                <h3>Add child</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
             </div>
             <div class="modal-body">
+                <div class="form-context"><svg class="icon"><use href="#i-user-plus"/></svg><span>Child of <strong id="child-for-name"></strong></span></div>
                 <div class="form-group">
-                    <label>Add child to: <strong id="child-for-name"></strong></label>
+                    <label for="child-marriage">With</label>
+                    <select class="form-control" id="child-marriage"></select>
                 </div>
-
                 <div class="form-group">
-                    <label for="child-marriage">From Marriage With</label>
-                    <select class="form-control" id="child-marriage">
-                        <option value="">-- No specific marriage --</option>
-                    </select>
+                    <label for="new-child-name">Name</label>
+                    <input type="text" class="form-control" id="new-child-name" maxlength="200" placeholder="Full name">
                 </div>
-
                 <div class="form-group">
-                    <label for="new-child-name">Child Name</label>
-                    <input type="text" class="form-control" id="new-child-name" placeholder="Name">
-
-                    <div class="radio-group" style="margin-top: 8px;">
-                        <label class="radio-label">
-                            <input type="radio" name="child-gender" value="male"> Male
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="child-gender" value="female"> Female
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="child-gender" value="unknown" checked> Unspecified
-                        </label>
+                    <span class="form-label">Gender</span>
+                    <div class="segmented">
+                        <label><input type="radio" name="child-gender" value="male">Male</label>
+                        <label><input type="radio" name="child-gender" value="female">Female</label>
+                        <label><input type="radio" name="child-gender" value="unknown" checked>Unspecified</label>
                     </div>
                 </div>
-
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="child-dob">Date of Birth</label>
-                        <input type="text" class="form-control" id="child-dob" placeholder="e.g. 2010">
+                        <label for="child-dob">Born</label>
+                        <input type="text" class="form-control" id="child-dob" maxlength="64" placeholder="e.g. 2010">
                     </div>
                     <div class="form-group">
-                        <label for="child-dod">Date of Death</label>
-                        <input type="text" class="form-control" id="child-dod" placeholder="Optional">
+                        <label for="child-dod">Died</label>
+                        <input type="text" class="form-control" id="child-dod" maxlength="64" placeholder="Optional">
                     </div>
                 </div>
-
                 <div class="form-group">
                     <label for="child-notes">Notes</label>
-                    <textarea class="form-control" id="child-notes" rows="2" placeholder="Optional notes..."></textarea>
+                    <textarea class="form-control" id="child-notes" maxlength="5000" rows="2" placeholder="Optional"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="child-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="child-save-btn">Add Child</button>
+                <button class="btn btn-outline" data-close>Cancel</button>
+                <button class="btn btn-primary" id="child-save-btn">Add child</button>
             </div>
         </div>
     </div>
 
-    <!-- Export Modal -->
+    <!-- Export -->
     <div class="modal-overlay" id="export-modal">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true">
             <div class="modal-header">
-                <h3>Export Family Tree</h3>
-                <button class="modal-close" id="export-modal-close">&times;</button>
+                <h3>Export</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>Export Format</label>
-                    <div class="radio-group">
-                        <label class="radio-label">
-                            <input type="radio" name="export-format" value="png" checked> PNG
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="export-format" value="jpg"> JPG
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="export-format" value="pdf"> PDF
-                        </label>
+                    <span class="form-label">Format</span>
+                    <div class="segmented">
+                        <label><input type="radio" name="export-format" value="png" checked>PNG</label>
+                        <label><input type="radio" name="export-format" value="jpg">JPG</label>
+                        <label><input type="radio" name="export-format" value="pdf">PDF</label>
                     </div>
                 </div>
-
-                <div id="image-options">
-                    <div class="form-group">
-                        <label for="image-preset">Image Size Preset</label>
-                        <select class="form-control" id="image-preset">
-                            <option value="custom">Custom</option>
-                            <option value="hd">HD (1280 × 720)</option>
-                            <option value="fullhd" selected>Full HD (1920 × 1080)</option>
-                            <option value="2k">2K (2560 × 1440)</option>
-                            <option value="4k">4K Ultra HD (3840 × 2160)</option>
-                            <option value="5k">5K (5120 × 2880)</option>
-                            <option value="8k">8K Ultra HD (7680 × 4320)</option>
-                            <option value="poster">Poster (4000 × 3000)</option>
-                            <option value="banner">Banner Wide (6000 × 2000)</option>
-                        </select>
-                    </div>
-
+                <div class="form-group" id="export-scale-group">
+                    <label for="export-scale">Resolution</label>
+                    <select class="form-control" id="export-scale">
+                        <option value="1">Standard (1×)</option>
+                        <option value="2" selected>High (2×)</option>
+                        <option value="3">Print (3×)</option>
+                    </select>
+                    <div class="form-hint" id="export-size-hint"></div>
+                </div>
+                <div id="pdf-options" class="hidden">
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="export-width">Width (px)</label>
-                            <input type="number" class="form-control" id="export-width" value="1920" min="800"
-                                max="16000">
+                            <label for="pdf-size">Page size</label>
+                            <select class="form-control" id="pdf-size">
+                                <option value="a4">A4</option>
+                                <option value="a3">A3</option>
+                                <option value="a2">A2</option>
+                                <option value="a1">A1</option>
+                                <option value="a0">A0</option>
+                                <option value="letter">Letter</option>
+                                <option value="legal">Legal</option>
+                                <option value="tabloid">Tabloid</option>
+                            </select>
                         </div>
                         <div class="form-group">
-                            <label for="export-height">Height (px)</label>
-                            <input type="number" class="form-control" id="export-height" value="1080" min="600"
-                                max="16000">
+                            <span class="form-label">Orientation</span>
+                            <div class="segmented">
+                                <label><input type="radio" name="pdf-orientation" value="landscape" checked>Landscape</label>
+                                <label><input type="radio" name="pdf-orientation" value="portrait">Portrait</label>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="form-group" id="quality-group">
-                        <label for="export-quality">Quality (JPG only): <span id="quality-value">90</span>%</label>
-                        <input type="range" class="form-control" id="export-quality" value="90" min="10" max="100">
+                </div>
+                <div class="form-group">
+                    <span class="form-label">Background</span>
+                    <div class="segmented">
+                        <label><input type="radio" name="export-bg" value="solid" checked>Solid</label>
+                        <label><input type="radio" name="export-bg" value="transparent" id="export-bg-transparent">Transparent</label>
                     </div>
                 </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" data-close>Cancel</button>
+                <button class="btn btn-primary" id="export-save-btn"><svg class="icon"><use href="#i-download"/></svg>Export</button>
+            </div>
+        </div>
+    </div>
 
-                <div id="pdf-options" style="display: none;">
-                    <div class="form-group">
-                        <label for="pdf-size">Page Size</label>
-                        <select class="form-control" id="pdf-size">
-                            <optgroup label="Standard Sizes">
-                                <option value="A4">A4 (210 × 297 mm)</option>
-                                <option value="A3">A3 (297 × 420 mm)</option>
-                                <option value="Letter">Letter (8.5 × 11 in)</option>
-                                <option value="Legal">Legal (8.5 × 14 in)</option>
-                                <option value="Tabloid">Tabloid (11 × 17 in)</option>
+    <!-- Auto arrange -->
+    <div class="modal-overlay" id="layout-modal">
+        <div class="modal" role="dialog" aria-modal="true">
+            <div class="modal-header">
+                <h3>Auto arrange</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <span class="form-label">Direction</span>
+                    <div class="segmented">
+                        <label><input type="radio" name="layout-direction" value="top-down" checked>Top to bottom</label>
+                        <label><input type="radio" name="layout-direction" value="left-right">Left to right</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <span class="form-label">Start from</span>
+                    <div class="search-box">
+                        <svg class="icon"><use href="#i-search"/></svg>
+                        <input type="text" class="form-control" id="layout-search" placeholder="Search people">
+                    </div>
+                    <div class="pick-list" id="layout-person-list"></div>
+                    <div class="form-hint">Everyone connected to this person is arranged by generation. Positions can be undone.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" data-close>Cancel</button>
+                <button class="btn btn-primary" id="layout-apply-btn" disabled>Arrange</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal" role="dialog" aria-modal="true">
+            <div class="modal-header">
+                <h3>Appearance</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <span class="form-label">Gender colours</span>
+                    <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+                        <div>
+                            <label class="form-label" for="color-male">Male</label>
+                            <input type="color" class="form-control" id="color-male">
+                        </div>
+                        <div>
+                            <label class="form-label" for="color-female">Female</label>
+                            <input type="color" class="form-control" id="color-female">
+                        </div>
+                        <div>
+                            <label class="form-label" for="color-unknown">Unspecified</label>
+                            <input type="color" class="form-control" id="color-unknown">
+                        </div>
+                    </div>
+                    <div class="swatches" style="margin-top:10px" id="palette-swatches"></div>
+                </div>
+
+                <div class="setting-row">
+                    <label for="node-size">Card width</label>
+                    <div class="control">
+                        <input type="range" id="node-size" min="120" max="240" step="10">
+                        <span class="value"><span id="node-size-value">160</span>px</span>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label for="photo-size">Photo size</label>
+                    <div class="control">
+                        <input type="range" id="photo-size" min="32" max="80" step="4">
+                        <span class="value"><span id="photo-size-value">44</span>px</span>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label for="font-size">Font size</label>
+                    <div class="control">
+                        <input type="range" id="font-size" min="10" max="20" step="1">
+                        <span class="value"><span id="font-size-value">13</span>px</span>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label for="font-family">Font</label>
+                    <div class="control">
+                        <select class="form-control" id="font-family">
+                            <optgroup label="Default">
+                                <option value="Inter, system-ui, sans-serif">Inter</option>
+                                <option value="system-ui, -apple-system, sans-serif">System</option>
                             </optgroup>
-                            <optgroup label="Large Format">
-                                <option value="A2">A2 (420 × 594 mm)</option>
-                                <option value="A1">A1 (594 × 841 mm)</option>
-                                <option value="A0">A0 (841 × 1189 mm)</option>
+                            <optgroup label="Sans">
+                                <option value="'Poppins', sans-serif">Poppins</option>
+                                <option value="'Noto Sans', sans-serif">Noto Sans</option>
                             </optgroup>
-                            <optgroup label="Extra Large">
-                                <option value="B0">B0 (1000 × 1414 mm)</option>
-                                <option value="Arch-E">Arch E (914 × 1219 mm)</option>
-                                <option value="Custom-Large">Custom Large (1200 × 900 mm)</option>
+                            <optgroup label="Serif / Mono">
+                                <option value="Georgia, serif">Georgia</option>
+                                <option value="'Times New Roman', serif">Times New Roman</option>
+                                <option value="'Courier New', monospace">Courier New</option>
+                            </optgroup>
+                            <optgroup label="Devanagari">
+                                <option value="'Noto Sans Devanagari', sans-serif">Noto Sans Devanagari</option>
+                                <option value="'Mukta', sans-serif">Mukta</option>
+                                <option value="'Hind', sans-serif">Hind</option>
                             </optgroup>
                         </select>
                     </div>
-
-                    <div class="form-group">
-                        <label>Orientation</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="pdf-orientation" value="landscape" checked> Landscape
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="pdf-orientation" value="portrait"> Portrait
-                            </label>
-                        </div>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="export-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="export-save-btn">Export</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Load Modal -->
-    <div class="modal-overlay" id="load-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Load Family Tree</h3>
-                <button class="modal-close" id="load-modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Saved Trees</label>
-                    <div class="file-list" id="saved-files-list">
-                        <!-- Dynamic content -->
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" id="load-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="load-confirm-btn" disabled>Load</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Auto Layout Modal -->
-    <div class="modal-overlay" id="layout-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Auto Arrange Layout</h3>
-                <button class="modal-close" id="layout-modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Select Root Person</label>
-                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                        The tree will be arranged starting from this person.
-                    </p>
-                    <div class="person-list" id="layout-person-list"></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" id="layout-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="layout-apply-btn" disabled>Apply Layout</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settings-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Settings</h3>
-                <button class="modal-close" id="settings-modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Gender Color Palette</label>
-                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                        Customize node colors based on gender.
-                    </p>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="color-male">Male</label>
-                        <input type="color" class="form-control" id="color-male" value="#d0e8ff"
-                            style="height: 40px; padding: 4px;">
-                    </div>
-                    <div class="form-group">
-                        <label for="color-female">Female</label>
-                        <input type="color" class="form-control" id="color-female" value="#ffd0e8"
-                            style="height: 40px; padding: 4px;">
-                    </div>
-                    <div class="form-group">
-                        <label for="color-unknown">Unspecified</label>
-                        <input type="color" class="form-control" id="color-unknown" value="#e8e8e8"
-                            style="height: 40px; padding: 4px;">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-top: 16px;">
-                    <label>Preset Palettes</label>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-                        <button class="btn btn-sm" data-palette="classic">Classic (Blue/Pink)</button>
-                        <button class="btn btn-sm" data-palette="neutral">Neutral (Grays)</button>
-                        <button class="btn btn-sm" data-palette="earth">Earth Tones</button>
-                        <button class="btn btn-sm" data-palette="pastel">Pastel</button>
-                    </div>
-                </div>
-
-                <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border-color);">
-
-                <div class="form-group">
-                    <label for="node-size">Node Size: <span id="node-size-value">140</span>px</label>
-                    <input type="range" class="form-control" id="node-size" value="140" min="100" max="200" step="10">
-                </div>
-
-                <div class="form-group">
-                    <label for="font-size">Font Size: <span id="font-size-value">12</span>px</label>
-                    <input type="range" class="form-control" id="font-size" value="12" min="10" max="20" step="1">
-                </div>
-
-                <div class="form-group">
-                    <label for="font-family">Font Family</label>
-                    <select class="form-control" id="font-family">
-                        <optgroup label="System Fonts">
-                            <option value="system-ui, -apple-system, sans-serif">System Default</option>
-                            <option value="Arial, sans-serif">Arial</option>
-                            <option value="Georgia, serif">Georgia</option>
-                            <option value="'Times New Roman', serif">Times New Roman</option>
-                            <option value="'Courier New', monospace">Courier New</option>
-                        </optgroup>
-                        <optgroup label="Modern Fonts">
-                            <option value="'Inter', sans-serif">Inter</option>
-                            <option value="'Roboto', sans-serif">Roboto</option>
-                            <option value="'Poppins', sans-serif">Poppins</option>
-                            <option value="'Noto Sans', sans-serif">Noto Sans</option>
-                        </optgroup>
-                        <optgroup label="Hindi / Devanagari">
-                            <option value="'Noto Sans Devanagari', sans-serif">Noto Sans Devanagari</option>
-                            <option value="'Mukta', sans-serif">Mukta</option>
-                            <option value="'Hind', sans-serif">Hind</option>
-                        </optgroup>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="photo-size">Photo Size: <span id="photo-size-value">40</span>px</label>
-                    <input type="range" class="form-control" id="photo-size" value="40" min="30" max="80" step="5">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" id="settings-cancel-btn">Cancel</button>
+                <button class="btn btn-ghost-left" id="settings-reset-btn">Reset to defaults</button>
+                <button class="btn btn-outline" data-close>Cancel</button>
                 <button class="btn btn-primary" id="settings-save-btn">Apply</button>
             </div>
         </div>
     </div>
 
-    <!-- Edit Marriage Modal -->
+    <!-- Edit marriage -->
     <div class="modal-overlay" id="edit-marriage-modal">
-        <div class="modal">
+        <div class="modal modal-sm" role="dialog" aria-modal="true">
             <div class="modal-header">
-                <h3>Edit Marriage</h3>
-                <button class="modal-close" id="edit-marriage-modal-close">&times;</button>
+                <h3>Marriage</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
             </div>
             <div class="modal-body">
+                <div class="form-context"><svg class="icon"><use href="#i-heart"/></svg><strong id="marriage-spouses"></strong></div>
                 <div class="form-group">
-                    <label>Marriage between: <strong id="marriage-spouses"></strong></label>
-                </div>
-
-                <div class="form-group">
-                    <label for="edit-marriage-date">Marriage Date</label>
-                    <input type="text" class="form-control" id="edit-marriage-date"
-                        placeholder="e.g. 1995 or 15 Aug 1995">
+                    <label for="edit-marriage-date">Married</label>
+                    <input type="text" class="form-control" id="edit-marriage-date" maxlength="64" placeholder="e.g. 1995 or 15 Aug 1995">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="edit-marriage-cancel-btn">Cancel</button>
+                <button class="btn btn-danger btn-ghost-left" id="edit-marriage-delete-btn"><svg class="icon"><use href="#i-link-off"/></svg>Remove marriage</button>
+                <button class="btn btn-outline" data-close>Cancel</button>
                 <button class="btn btn-primary" id="edit-marriage-save-btn">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- Toast Container -->
-    <div class="toast-container" id="toast-container"></div>
+    <!-- Confirm -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal modal-sm" role="alertdialog" aria-modal="true">
+            <div class="modal-header">
+                <h3 id="confirm-title">Are you sure?</h3>
+                <button class="btn btn-icon btn-sm" data-close><svg class="icon"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message" style="color: var(--text-2)"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="confirm-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="confirm-ok-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
 
-    <!-- Scripts -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
     <script src="/static/js/app.js"></script>
     <script src="/static/js/tree-renderer.js"></script>
     <script src="/static/js/forms.js"></script>
+    <script src="/static/js/export.js"></script>
 </body>
 
 </html>

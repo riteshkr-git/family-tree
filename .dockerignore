@@ -1,36 +1,19 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
 venv/
 .venv/
-env/
 .env
-
-# IDE
+.git/
+.gitignore
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# Project specific
 data/
 exports/
 uploads/
-*.json
-!package.json
-
-# Git
-.git/
-.gitignore
-
-# Docker
+src/
+*.md
+LICENSE
 Dockerfile
 docker-compose*.yml
-
-# Misc
-*.md
-!README.md
-LICENSE
+render.yaml
 *.log

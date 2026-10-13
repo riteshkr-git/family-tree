@@ -1,912 +1,857 @@
 /**
- * Family Tree Application - Main Application Logic
+ * Family Tree Builder - application state, API client, shell UI (toolbar, panel, menus, settings).
  */
+'use strict';
 
-// Application State
-const AppState = {
-    tree: {
-        persons: {},
-        marriages: {},
-        parent_child: []
-    },
-    selectedPersonId: null,
-    selectedPersonIds: new Set(), // Support for multi-select
-    layoutDirection: 'top-down',
-    currentFilename: null, // Track the current file for Save functionality
-    canUndo: false,
-    canRedo: false
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const DEFAULT_SETTINGS = {
+    colors: null,                 // {male, female, unknown} or null for theme defaults
+    nodeWidth: 160,
+    photoSize: 44,
+    fontSize: 13,
+    fontFamily: 'Inter, system-ui, sans-serif'
 };
 
-// API Helper
+const PALETTES = {
+    classic: { label: 'Classic', male: '#dbeafe', female: '#fce7f3', unknown: '#eef1f6' },
+    pastel: { label: 'Pastel', male: '#dcfce7', female: '#fef3c7', unknown: '#ede9fe' },
+    earth: { label: 'Earth', male: '#e7e5d3', female: '#f3e3d3', unknown: '#e5e7eb' },
+    mono: { label: 'Mono', male: '#e5e7eb', female: '#d1d5db', unknown: '#f3f4f6' }
+};
+
+const AppState = {
+    tree: { persons: {}, marriages: {}, parent_child: [] },
+    selectedPersonId: null,
+    selectedPersonIds: new Set(),
+    canUndo: false,
+    canRedo: false,
+    settings: { ...DEFAULT_SETTINGS }
+};
+
+// ---------------------------------------------------------------------------
+// API client
+// ---------------------------------------------------------------------------
 const API = {
     baseUrl: '/api',
 
     async request(method, endpoint, data = null) {
-        const options = {
-            method,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin'  // Include session cookies
-        };
-
-        if (data) {
+        const options = { method, headers: {}, credentials: 'same-origin' };
+        if (data !== null) {
+            options.headers['Content-Type'] = 'application/json';
             options.body = JSON.stringify(data);
         }
-
         const response = await fetch(`${this.baseUrl}${endpoint}`, options);
-
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-            throw new Error(error.detail || 'Request failed');
+            const error = await response.json().catch(() => ({ detail: response.statusText }));
+            const detail = Array.isArray(error.detail)
+                ? error.detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+                : (error.detail || 'Request failed');
+            throw new Error(detail);
         }
-
-        // Check if response has content
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            return response.json();
-        }
-
-        return response;
+        const type = response.headers.get('content-type') || '';
+        return type.includes('application/json') ? response.json() : response;
     },
 
-    // Tree operations
-    async getTree() {
-        return this.request('GET', '/tree');
-    },
-
-    async saveTree(filename) {
-        const url = filename ? `/tree/save?filename=${encodeURIComponent(filename)}` : '/tree/save';
-        return this.request('POST', url);
-    },
-
-    async loadTree(filename) {
-        return this.request('POST', `/tree/load?filename=${encodeURIComponent(filename)}`);
-    },
-
-    async getSavedFiles() {
-        return this.request('GET', '/tree/files');
-    },
-
-    async newTree() {
-        return this.request('POST', '/tree/new');
-    },
-
-    async undo() {
-        return this.request('POST', '/tree/undo');
-    },
-
-    async redo() {
-        return this.request('POST', '/tree/redo');
-    },
-
-    async autoLayout(rootPersonId, direction) {
+    getTree() { return this.request('GET', '/tree'); },
+    newTree() { return this.request('POST', '/tree/new'); },
+    undo() { return this.request('POST', '/tree/undo'); },
+    redo() { return this.request('POST', '/tree/redo'); },
+    exportJson() { return this.request('GET', '/tree/export-json'); },
+    importJson(data) { return this.request('POST', '/tree/import-json', data); },
+    autoLayout(rootPersonId, direction, spacingX, spacingY) {
         return this.request('POST', '/tree/layout', {
-            root_person_id: rootPersonId,
-            direction: direction,
-            spacing_x: 200,
-            spacing_y: 150
+            root_person_id: rootPersonId, direction, spacing_x: spacingX, spacing_y: spacingY
         });
     },
 
-    async exportTree(options) {
-        const response = await fetch(`${this.baseUrl}/tree/export`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(options)
-        });
+    createPerson(data) { return this.request('POST', '/persons', data); },
+    updatePerson(id, data) { return this.request('PUT', `/persons/${encodeURIComponent(id)}`, data); },
+    updatePositions(positions) { return this.request('PATCH', '/persons/positions', positions); },
+    deletePerson(id) { return this.request('DELETE', `/persons/${encodeURIComponent(id)}`); },
 
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Export failed' }));
-            throw new Error(error.detail || 'Export failed');
-        }
-
-        return response.blob();
-    },
-
-    // Person operations
-    async createPerson(data) {
-        return this.request('POST', '/persons', data);
-    },
-
-    async updatePerson(id, data) {
-        return this.request('PUT', `/persons/${id}`, data);
-    },
-
-    async updatePosition(id, x, y) {
-        return this.request('PATCH', `/persons/${id}/position`, { x, y });
-    },
-
-    async updatePositions(positions) {
-        return this.request('PATCH', '/persons/positions', positions);
-    },
-
-    async deletePerson(id) {
-        return this.request('DELETE', `/persons/${id}`);
-    },
-
-    // Relationship operations
-    async createMarriage(spouse1Id, spouse2Id, marriageDate) {
+    createMarriage(spouse1Id, spouse2Id, marriageDate) {
         return this.request('POST', '/marriages', {
-            spouse1_id: spouse1Id,
-            spouse2_id: spouse2Id,
-            marriage_date: marriageDate || null
+            spouse1_id: spouse1Id, spouse2_id: spouse2Id, marriage_date: marriageDate || null
         });
     },
-
-    async updateMarriage(id, data) {
-        return this.request('PUT', `/marriages/${id}`, data);
-    },
-
-    async deleteMarriage(id) {
-        return this.request('DELETE', `/marriages/${id}`);
-    },
-
-    async addChild(parentId, childId, marriageId) {
+    updateMarriage(id, data) { return this.request('PUT', `/marriages/${encodeURIComponent(id)}`, data); },
+    deleteMarriage(id) { return this.request('DELETE', `/marriages/${encodeURIComponent(id)}`); },
+    addChild(parentId, childId, marriageId) {
         return this.request('POST', '/children', {
-            parent_id: parentId,
-            child_id: childId,
-            marriage_id: marriageId || null
+            parent_id: parentId, child_id: childId, marriage_id: marriageId || null
         });
     },
-
-    async removeChild(parentId, childId) {
-        return this.request('DELETE', `/children/${parentId}/${childId}`);
+    removeChild(parentId, childId) {
+        return this.request('DELETE', `/children/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}`);
     },
 
-    // Photo upload
-    async uploadPhoto(file) {
+    async uploadPhoto(blob, filename = 'photo.jpg') {
         const formData = new FormData();
-        formData.append('file', file);
-
+        formData.append('file', blob, filename);
         const response = await fetch(`${this.baseUrl}/tree/upload-photo`, {
-            method: 'POST',
-            body: formData
+            method: 'POST', body: formData, credentials: 'same-origin'
         });
-
         if (!response.ok) {
-            throw new Error('Upload failed');
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Upload failed');
         }
-
         return response.json();
     }
 };
 
-// Toast notifications
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    container.appendChild(toast);
+// ---------------------------------------------------------------------------
+// Small DOM / formatting helpers
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
 
+function el(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(props)) {
+        if (value === null || value === undefined) continue;
+        if (key === 'className') node.className = value;
+        else if (key === 'text') node.textContent = value;
+        else if (key === 'html') node.innerHTML = value; // only ever used with trusted markup (icons)
+        else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
+        else if (key === 'dataset') Object.assign(node.dataset, value);
+        else if (key === 'style') node.style.cssText = value;
+        else node.setAttribute(key, value);
+    }
+    for (const child of children.flat()) {
+        if (child === null || child === undefined || child === false) continue;
+        node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return node;
+}
+
+function icon(name, cls = 'icon') {
+    return el('svg', { className: cls, html: `<use href="#i-${name}"/>` });
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+function initials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    const first = [...parts[0]][0] || '';
+    const last = parts.length > 1 ? ([...parts[parts.length - 1]][0] || '') : '';
+    return (first + last).toUpperCase();
+}
+
+function photoUrl(person) {
+    if (!person || !person.photo_path) return null;
+    const name = person.photo_path.split('/').pop();
+    return name ? `/uploads/${encodeURIComponent(name)}` : null;
+}
+
+function lifeSpan(person) {
+    const b = person.date_of_birth, d = person.date_of_death;
+    if (b && d) return `${b} – ${d}`;
+    if (b) return `b. ${b}`;
+    if (d) return `d. ${d}`;
+    return '';
+}
+
+function avatarEl(person, cls = 'avatar') {
+    const node = el('div', { className: `${cls} ${person.gender || 'unknown'}` });
+    const url = photoUrl(person);
+    if (url) node.append(el('img', { src: url, alt: '' }));
+    else node.textContent = initials(person.name);
+    return node;
+}
+
+function personCount() {
+    return Object.keys(AppState.tree.persons).length;
+}
+
+function isTyping() {
+    const a = document.activeElement;
+    if (!a) return false;
+    return a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable;
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: filename });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function todayStamp() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Toasts and status
+// ---------------------------------------------------------------------------
+function showToast(message, type = 'info', duration = 2600) {
+    const container = $('toast-container');
+    const iconName = type === 'success' ? 'check' : type === 'error' ? 'alert' : null;
+    const toast = el('div', { className: `toast ${type}` }, iconName && icon(iconName), el('span', { text: message }));
+    container.append(toast);
+    while (container.children.length > 3) container.firstElementChild.remove();
     setTimeout(() => {
-        toast.remove();
-    }, 3000);
+        toast.classList.add('leaving');
+        setTimeout(() => toast.remove(), 220);
+    }, duration);
 }
 
-// Update status bar
 function updateStatus(text) {
-    document.getElementById('status-text').textContent = text;
+    $('status-text').textContent = text;
 }
 
-function updatePersonCount() {
-    const count = Object.keys(AppState.tree.persons).length;
-    document.getElementById('person-count').textContent = `${count} person${count !== 1 ? 's' : ''}`;
+function updateCounts() {
+    const n = personCount();
+    $('person-count').textContent = `${n} ${n === 1 ? 'person' : 'people'}`;
+    const s = AppState.selectedPersonIds.size;
+    $('selection-count').textContent = s > 1 ? `${s} selected` : '';
 }
 
-// Update undo/redo buttons
 function updateUndoRedoButtons() {
-    document.getElementById('undo-btn').disabled = !AppState.canUndo;
-    document.getElementById('redo-btn').disabled = !AppState.canRedo;
+    $('undo-btn').disabled = !AppState.canUndo;
+    $('redo-btn').disabled = !AppState.canRedo;
 }
 
-// Load tree data from server
-async function loadTreeData() {
-    try {
-        updateStatus('Loading...');
-        const data = await API.getTree();
+function updateZoomLabel(scale) {
+    $('zoom-level').textContent = `${Math.round(scale * 100)}%`;
+}
 
+// ---------------------------------------------------------------------------
+// Modals
+// ---------------------------------------------------------------------------
+const Modal = {
+    stack: [],
+
+    open(id) {
+        const overlay = $(id);
+        overlay.classList.add('active');
+        this.stack = this.stack.filter(x => x !== id);
+        this.stack.push(id);
+        const focusTarget = overlay.querySelector('input:not([type=hidden]):not([type=file]):not([type=radio]), textarea, select, button.btn-primary');
+        if (focusTarget) setTimeout(() => focusTarget.focus(), 30);
+    },
+
+    close(id) {
+        $(id).classList.remove('active');
+        this.stack = this.stack.filter(x => x !== id);
+    },
+
+    closeTop() {
+        const id = this.stack[this.stack.length - 1];
+        if (id) this.close(id);
+        return Boolean(id);
+    },
+
+    isOpen() {
+        return this.stack.length > 0;
+    },
+
+    init() {
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.querySelectorAll('[data-close]').forEach(btn => {
+                btn.addEventListener('click', () => this.close(overlay.id));
+            });
+            overlay.addEventListener('pointerdown', (e) => {
+                if (e.target === overlay) this.close(overlay.id);
+            });
+        });
+    }
+};
+
+function confirmDialog({ title = 'Are you sure?', message = '', confirmText = 'Confirm', danger = false } = {}) {
+    return new Promise(resolve => {
+        $('confirm-title').textContent = title;
+        $('confirm-message').textContent = message;
+        const ok = $('confirm-ok-btn');
+        const cancel = $('confirm-cancel-btn');
+        ok.textContent = confirmText;
+        ok.classList.toggle('btn-danger', danger);
+
+        const cleanup = (result) => {
+            ok.onclick = null;
+            cancel.onclick = null;
+            Modal.close('confirm-modal');
+            resolve(result);
+        };
+        ok.onclick = () => cleanup(true);
+        cancel.onclick = () => cleanup(false);
+        Modal.open('confirm-modal');
+        ok.focus();
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Data loading
+// ---------------------------------------------------------------------------
+async function loadTreeData({ fit = false } = {}) {
+    try {
+        const data = await API.getTree();
         AppState.tree = data.tree;
         AppState.canUndo = data.can_undo;
         AppState.canRedo = data.can_redo;
 
-        updatePersonCount();
-        updateUndoRedoButtons();
+        // Drop selections that no longer exist
+        for (const id of [...AppState.selectedPersonIds]) {
+            if (!AppState.tree.persons[id]) AppState.selectedPersonIds.delete(id);
+        }
+        if (AppState.selectedPersonId && !AppState.tree.persons[AppState.selectedPersonId]) {
+            AppState.selectedPersonId = null;
+            hidePanel();
+        }
+
         TreeRenderer.render();
-
-        // Show/hide empty state
-        const isEmpty = Object.keys(AppState.tree.persons).length === 0;
-        document.getElementById('empty-state').style.display = isEmpty ? 'flex' : 'none';
-
+        if (fit) TreeRenderer.fitToContent();
+        $('empty-state').classList.toggle('hidden', personCount() > 0);
+        updateCounts();
+        updateUndoRedoButtons();
+        if (AppState.selectedPersonId && !$('side-panel').classList.contains('collapsed')) {
+            renderPanel(AppState.selectedPersonId);
+        }
         updateStatus('Ready');
     } catch (error) {
         console.error('Failed to load tree:', error);
-        showToast('Failed to load tree data', 'error');
-        updateStatus('Error loading data');
+        showToast('Could not load the tree', 'error');
+        updateStatus('Connection problem');
     }
 }
 
-// Initialize dropdown menus
-function initDropdowns() {
-    document.querySelectorAll('.dropdown').forEach(dropdown => {
-        const btn = dropdown.querySelector('.btn');
-        const menu = dropdown.querySelector('.dropdown-menu');
-
-        // Handle both click and touch
-        const toggleMenu = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Close other dropdowns
-            document.querySelectorAll('.dropdown-menu.active').forEach(m => {
-                if (m !== menu) m.classList.remove('active');
-            });
-            menu.classList.toggle('active');
-        };
-
-        btn.addEventListener('click', toggleMenu);
-
-        // Close dropdown when item is clicked (for mobile)
-        menu.querySelectorAll('.dropdown-item').forEach(item => {
-            item.addEventListener('click', () => {
-                menu.classList.remove('active');
-            });
-        });
-    });
-
-    // Close dropdowns on outside click/touch
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.dropdown-menu.active').forEach(m => {
-            m.classList.remove('active');
-        });
-    });
-
-    // Also close on touch outside for mobile
-    document.addEventListener('touchend', (e) => {
-        if (!e.target.closest('.dropdown')) {
-            document.querySelectorAll('.dropdown-menu.active').forEach(m => {
-                m.classList.remove('active');
-            });
-        }
-    });
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+function setSelection(ids, primary = null) {
+    AppState.selectedPersonIds = new Set(ids);
+    AppState.selectedPersonId = primary ?? (ids.length === 1 ? ids[0] : null);
+    TreeRenderer.updateSelection();
+    updateCounts();
 }
 
-// Initialize keyboard shortcuts
-function initKeyboardShortcuts() {
-    document.addEventListener('keydown', async (e) => {
-        // Ctrl+Z - Undo
-        if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-            e.preventDefault();
-            if (AppState.canUndo) {
-                try {
-                    await API.undo();
-                    await loadTreeData();
-                    showToast('Undone', 'success');
-                } catch (error) {
-                    showToast('Undo failed', 'error');
-                }
-            }
-        }
-
-        // Ctrl+Shift+Z or Ctrl+Y - Redo
-        if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || (e.ctrlKey && e.key === 'y')) {
-            e.preventDefault();
-            if (AppState.canRedo) {
-                try {
-                    await API.redo();
-                    await loadTreeData();
-                    showToast('Redone', 'success');
-                } catch (error) {
-                    showToast('Redo failed', 'error');
-                }
-            }
-        }
-
-        // Ctrl+S - Export JSON (download)
-        if (e.ctrlKey && e.key === 's') {
-            e.preventDefault();
-            document.getElementById('export-json-btn').click();
-        }
-
-        // Escape - Close modals
-        if (e.key === 'Escape') {
-            document.querySelectorAll('.modal-overlay.active').forEach(modal => {
-                modal.classList.remove('active');
-            });
-            document.getElementById('context-menu').classList.remove('active');
-        }
-
-        // Delete - Delete selected person
-        if (e.key === 'Delete' && AppState.selectedPersonId) {
-            if (confirm('Are you sure you want to delete this person?')) {
-                try {
-                    await API.deletePerson(AppState.selectedPersonId);
-                    AppState.selectedPersonId = null;
-                    await loadTreeData();
-                    showToast('Person deleted', 'success');
-                } catch (error) {
-                    showToast('Delete failed', 'error');
-                }
-            }
-        }
-    });
+function clearSelection() {
+    if (AppState.selectedPersonIds.size === 0 && !AppState.selectedPersonId) return;
+    setSelection([]);
+    hidePanel();
 }
 
-// Initialize toolbar buttons
-function initToolbar() {
-    // New tree
-    document.getElementById('new-tree-btn').addEventListener('click', async () => {
-        if (Object.keys(AppState.tree.persons).length > 0) {
-            if (!confirm('Create a new tree? Unsaved changes will be lost.')) {
-                return;
-            }
+function selectBranch(rootId) {
+    const ids = new Set();
+    const queue = [rootId];
+    while (queue.length) {
+        const pid = queue.shift();
+        if (ids.has(pid)) continue;
+        ids.add(pid);
+        for (const m of Object.values(AppState.tree.marriages)) {
+            if (m.spouse1_id === pid) ids.add(m.spouse2_id);
+            if (m.spouse2_id === pid) ids.add(m.spouse1_id);
         }
+        for (const pc of AppState.tree.parent_child) {
+            if (pc.parent_id === pid) queue.push(pc.child_id);
+        }
+    }
+    setSelection([...ids].filter(id => AppState.tree.persons[id]), rootId);
+    showToast(`${ids.size} people selected`, 'info');
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+async function doUndo() {
+    if (!AppState.canUndo) return;
+    try {
+        await API.undo();
+        await loadTreeData();
+        showToast('Undone', 'info', 1400);
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function doRedo() {
+    if (!AppState.canRedo) return;
+    try {
+        await API.redo();
+        await loadTreeData();
+        showToast('Redone', 'info', 1400);
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deletePersons(ids) {
+    ids = ids.filter(id => AppState.tree.persons[id]);
+    if (ids.length === 0) return;
+    const names = ids.map(id => AppState.tree.persons[id].name);
+    const ok = await confirmDialog({
+        title: ids.length === 1 ? `Delete ${names[0]}?` : `Delete ${ids.length} people?`,
+        message: ids.length === 1
+            ? 'Their marriages and parent links will be removed too. You can undo this.'
+            : `${names.slice(0, 3).join(', ')}${ids.length > 3 ? ` and ${ids.length - 3} more` : ''} will be removed along with their relationships. You can undo this.`,
+        confirmText: 'Delete',
+        danger: true
+    });
+    if (!ok) return;
+    try {
+        for (const id of ids) await API.deletePerson(id);
+        setSelection([]);
+        hidePanel();
+        await loadTreeData();
+        showToast(ids.length === 1 ? 'Person deleted' : `${ids.length} people deleted`, 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+        await loadTreeData();
+    }
+}
+
+async function newTree() {
+    if (personCount() > 0) {
+        const ok = await confirmDialog({
+            title: 'Start a new tree?',
+            message: 'The current tree will be cleared. Save it as JSON first if you want to keep it. You can undo this.',
+            confirmText: 'New tree'
+        });
+        if (!ok) return;
+    }
+    try {
+        await API.newTree();
+        setSelection([]);
+        hidePanel();
+        await loadTreeData();
+        TreeRenderer.centerView();
+        showToast('New tree created', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function exportJson() {
+    try {
+        updateStatus('Saving…');
+        const data = await API.exportJson();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, `family-tree-${todayStamp()}.json`);
+        showToast('Saved as JSON', 'success');
+    } catch (error) {
+        showToast(`Save failed: ${error.message}`, 'error');
+    } finally {
+        updateStatus('Ready');
+    }
+}
+
+function importJson() {
+    const input = el('input', { type: 'file', accept: '.json,application/json' });
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
         try {
-            await API.newTree();
-            AppState.currentFilename = null; // Reset filename for new tree
-            await loadTreeData();
-            showToast('New tree created', 'success');
+            updateStatus('Opening…');
+            const data = JSON.parse(await file.text());
+            if (!data || typeof data.persons !== 'object' || data.persons === null) {
+                throw new Error('This file does not look like a family tree export');
+            }
+            data.marriages = data.marriages || {};
+            data.parent_child = data.parent_child || [];
+            if (personCount() > 0) {
+                const ok = await confirmDialog({
+                    title: 'Replace the current tree?',
+                    message: `Opening "${file.name}" replaces what is on the canvas. You can undo this.`,
+                    confirmText: 'Open'
+                });
+                if (!ok) { updateStatus('Ready'); return; }
+            }
+            const result = await API.importJson(data);
+            setSelection([]);
+            hidePanel();
+            await loadTreeData({ fit: true });
+            showToast(`Opened ${result.persons} ${result.persons === 1 ? 'person' : 'people'}`, 'success');
         } catch (error) {
-            showToast('Failed to create new tree', 'error');
-        }
-    });
-
-    // Export JSON - downloads tree as JSON file with embedded photos
-    document.getElementById('export-json-btn').addEventListener('click', async () => {
-        try {
-            updateStatus('Exporting...');
-            const response = await fetch('/api/tree/export-json', {
-                credentials: 'same-origin'
-            });
-            if (!response.ok) throw new Error('Export failed');
-
-            const data = await response.json();
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `family_tree_${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            showToast('Tree exported successfully', 'success');
+            console.error('Import failed:', error);
+            showToast(`Open failed: ${error.message}`, 'error');
             updateStatus('Ready');
-        } catch (error) {
-            console.error('Export failed:', error);
-            showToast('Export failed', 'error');
-            updateStatus('Export failed');
         }
-    });
-
-    // Import JSON - file picker to load tree from JSON file
-    document.getElementById('import-json-btn').addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                updateStatus('Importing...');
-                const text = await file.text();
-                const data = JSON.parse(text);
-
-                // Validate basic structure
-                if (!data.persons || typeof data.persons !== 'object') {
-                    throw new Error('Invalid family tree format: missing persons');
-                }
-                if (!data.marriages || typeof data.marriages !== 'object') {
-                    throw new Error('Invalid family tree format: missing marriages');
-                }
-
-                // Warn about large files
-                if (file.size > 5 * 1024 * 1024) {
-                    if (!confirm('This file is larger than 5MB. It may contain many photos. Continue?')) {
-                        updateStatus('Import cancelled');
-                        return;
-                    }
-                }
-
-                const response = await API.request('POST', '/tree/import-json', data);
-                await loadTreeData();
-
-                // Ensure renderer is ready before centering
-                if (TreeRenderer.svg) {
-                    TreeRenderer.centerView();
-                }
-
-                showToast(`Imported ${response.persons} persons`, 'success');
-                updateStatus('Ready');
-            } catch (error) {
-                console.error('Import failed:', error);
-                showToast(`Import failed: ${error.message}`, 'error');
-                updateStatus('Import failed');
-            }
-        };
-        input.click();
-    });
-
-    // Clear canvas
-    document.getElementById('clear-btn').addEventListener('click', async () => {
-        const personCount = Object.keys(AppState.tree.persons).length;
-        if (personCount === 0) {
-            showToast('Canvas is already empty', 'info');
-            return;
-        }
-
-        if (confirm(`Are you sure you want to clear the canvas? This will delete all ${personCount} person(s) and cannot be undone.`)) {
-            try {
-                await API.newTree();
-                await loadTreeData();
-                TreeRenderer.centerView();
-                showToast('Canvas cleared', 'success');
-            } catch (error) {
-                showToast('Failed to clear canvas', 'error');
-            }
-        }
-    });
-
-    // Add person
-    document.getElementById('add-person-btn').addEventListener('click', () => {
-        Forms.openPersonModal();
-    });
-
-    document.getElementById('empty-add-btn').addEventListener('click', () => {
-        Forms.openPersonModal();
-    });
-
-    // Undo
-    document.getElementById('undo-btn').addEventListener('click', async () => {
-        try {
-            await API.undo();
-            await loadTreeData();
-            showToast('Undone', 'success');
-        } catch (error) {
-            showToast('Nothing to undo', 'error');
-        }
-    });
-
-    // Redo
-    document.getElementById('redo-btn').addEventListener('click', async () => {
-        try {
-            await API.redo();
-            await loadTreeData();
-            showToast('Redone', 'success');
-        } catch (error) {
-            showToast('Nothing to redo', 'error');
-        }
-    });
-
-    // Layout direction
-    document.querySelectorAll('#layout-menu .dropdown-item').forEach(item => {
-        item.addEventListener('click', () => {
-            AppState.layoutDirection = item.dataset.layout;
-            document.getElementById('layout-btn').textContent =
-                `Layout: ${item.dataset.layout === 'top-down' ? 'Top-Down' : 'Left-Right'}`;
-        });
-    });
-
-    // Auto layout
-    document.getElementById('auto-layout-btn').addEventListener('click', () => {
-        if (Object.keys(AppState.tree.persons).length === 0) {
-            showToast('No persons to arrange', 'error');
-            return;
-        }
-        Forms.openLayoutModal();
-    });
-
-    // Settings
-    document.getElementById('settings-btn').addEventListener('click', () => {
-        openSettingsModal();
-    });
-
-    // Export
-    document.getElementById('export-btn').addEventListener('click', () => {
-        Forms.openExportModal();
-    });
-
-    // Close side panel
-    document.getElementById('close-panel').addEventListener('click', () => {
-        document.getElementById('side-panel').classList.add('collapsed');
-        AppState.selectedPersonId = null;
-        TreeRenderer.render();
-    });
+    };
+    input.click();
 }
 
-// Gender color palettes
-const colorPalettes = {
-    classic: { male: '#d0e8ff', female: '#ffd0e8', unknown: '#e8e8e8' },
-    neutral: { male: '#d0d0d0', female: '#b8b8b8', unknown: '#e0e0e0' },
-    earth: { male: '#c9dbb2', female: '#e8d4b8', unknown: '#d8d8c8' },
-    pastel: { male: '#b8d4e8', female: '#e8b8d4', unknown: '#d4e8b8' }
-};
-
-// Apply gender colors
-function applyGenderColors(male, female, unknown) {
-    document.documentElement.style.setProperty('--node-male', male);
-    document.documentElement.style.setProperty('--node-female', female);
-    document.documentElement.style.setProperty('--node-unknown', unknown);
-
-    // Save to localStorage
-    localStorage.setItem('genderColors', JSON.stringify({ male, female, unknown }));
-
-    // Re-render to apply new colors
-    TreeRenderer.render();
+// ---------------------------------------------------------------------------
+// Side panel
+// ---------------------------------------------------------------------------
+function hidePanel() {
+    $('side-panel').classList.add('collapsed');
 }
 
-// Open settings modal
-function openSettingsModal() {
-    const modal = document.getElementById('settings-modal');
-
-    // Load saved colors or defaults
-    const savedColors = JSON.parse(localStorage.getItem('genderColors')) || colorPalettes.classic;
-    document.getElementById('color-male').value = savedColors.male;
-    document.getElementById('color-female').value = savedColors.female;
-    document.getElementById('color-unknown').value = savedColors.unknown;
-
-    // Load saved node size or default
-    const savedNodeSize = localStorage.getItem('nodeSize') || '140';
-    document.getElementById('node-size').value = savedNodeSize;
-    document.getElementById('node-size-value').textContent = savedNodeSize;
-
-    // Load saved font size or default
-    const savedFontSize = localStorage.getItem('nodeFontSize') || '12';
-    document.getElementById('font-size').value = savedFontSize;
-    document.getElementById('font-size-value').textContent = savedFontSize;
-
-    // Load saved font family or default
-    const savedFontFamily = localStorage.getItem('nodeFontFamily') || 'system-ui, -apple-system, sans-serif';
-    document.getElementById('font-family').value = savedFontFamily;
-
-    // Load saved photo size or default
-    const savedPhotoSize = localStorage.getItem('photoSize') || '40';
-    document.getElementById('photo-size').value = savedPhotoSize;
-    document.getElementById('photo-size-value').textContent = savedPhotoSize;
-
-    modal.classList.add('active');
-}
-
-// Initialize settings modal
-function initSettings() {
-    const modal = document.getElementById('settings-modal');
-
-    document.getElementById('settings-modal-close').addEventListener('click', () => {
-        modal.classList.remove('active');
-    });
-
-    document.getElementById('settings-cancel-btn').addEventListener('click', () => {
-        modal.classList.remove('active');
-    });
-
-    document.getElementById('settings-save-btn').addEventListener('click', () => {
-        const male = document.getElementById('color-male').value;
-        const female = document.getElementById('color-female').value;
-        const unknown = document.getElementById('color-unknown').value;
-
-        applyGenderColors(male, female, unknown);
-
-        // Apply node size
-        const nodeSize = parseInt(document.getElementById('node-size').value);
-        applyNodeSize(nodeSize);
-
-        // Apply font size
-        const fontSize = parseInt(document.getElementById('font-size').value);
-        applyFontSize(fontSize);
-
-        // Apply font family
-        const fontFamily = document.getElementById('font-family').value;
-        applyFontFamily(fontFamily);
-
-        // Apply photo size
-        const photoSize = parseInt(document.getElementById('photo-size').value);
-        applyPhotoSize(photoSize);
-
-        modal.classList.remove('active');
-        showToast('Settings applied', 'success');
-    });
-
-    // Preset palette buttons
-    document.querySelectorAll('[data-palette]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const palette = colorPalettes[btn.dataset.palette];
-            document.getElementById('color-male').value = palette.male;
-            document.getElementById('color-female').value = palette.female;
-            document.getElementById('color-unknown').value = palette.unknown;
-        });
-    });
-
-    // Node size slider
-    const nodeSizeSlider = document.getElementById('node-size');
-    nodeSizeSlider.addEventListener('input', (e) => {
-        document.getElementById('node-size-value').textContent = e.target.value;
-    });
-
-    // Font size slider
-    const fontSizeSlider = document.getElementById('font-size');
-    fontSizeSlider.addEventListener('input', (e) => {
-        document.getElementById('font-size-value').textContent = e.target.value;
-    });
-
-    // Photo size slider
-    const photoSizeSlider = document.getElementById('photo-size');
-    photoSizeSlider.addEventListener('input', (e) => {
-        document.getElementById('photo-size-value').textContent = e.target.value;
-    });
-
-    // Load saved colors on init
-    const savedColors = JSON.parse(localStorage.getItem('genderColors'));
-    if (savedColors) {
-        applyGenderColors(savedColors.male, savedColors.female, savedColors.unknown);
-    }
-
-    // Load saved node size on init
-    const savedNodeSize = localStorage.getItem('nodeSize');
-    if (savedNodeSize) {
-        applyNodeSize(parseInt(savedNodeSize));
-        document.getElementById('node-size').value = savedNodeSize;
-        document.getElementById('node-size-value').textContent = savedNodeSize;
-    }
-
-    // Load saved font size on init
-    const savedFontSize = localStorage.getItem('nodeFontSize');
-    if (savedFontSize) {
-        applyFontSize(parseInt(savedFontSize));
-        document.getElementById('font-size').value = savedFontSize;
-        document.getElementById('font-size-value').textContent = savedFontSize;
-    }
-
-    // Load saved font family on init
-    const savedFontFamily = localStorage.getItem('nodeFontFamily');
-    if (savedFontFamily) {
-        applyFontFamily(savedFontFamily);
-        document.getElementById('font-family').value = savedFontFamily;
-    }
-
-    // Load saved photo size on init
-    const savedPhotoSize = localStorage.getItem('photoSize');
-    if (savedPhotoSize) {
-        applyPhotoSize(parseInt(savedPhotoSize));
-        document.getElementById('photo-size').value = savedPhotoSize;
-        document.getElementById('photo-size-value').textContent = savedPhotoSize;
-    }
-}
-
-// Apply node size
-function applyNodeSize(size) {
-    window.nodeSize = { width: size, height: Math.round(size * 0.43) }; // Maintain aspect ratio
-    localStorage.setItem('nodeSize', size);
-
-    if (TreeRenderer.nodeWidth) {
-        TreeRenderer.nodeWidth = size;
-        TreeRenderer.nodeHeight = Math.round(size * 0.43);
-        TreeRenderer.render();
-    }
-}
-
-// Apply font size
-function applyFontSize(size) {
-    document.documentElement.style.setProperty('--node-font-size', `${size}px`);
-    localStorage.setItem('nodeFontSize', size);
-    if (TreeRenderer.render) TreeRenderer.render();
-}
-
-// Apply font family
-function applyFontFamily(fontFamily) {
-    document.documentElement.style.setProperty('--node-font-family', fontFamily);
-    localStorage.setItem('nodeFontFamily', fontFamily);
-    if (TreeRenderer.render) TreeRenderer.render();
-}
-
-// Apply photo size
-function applyPhotoSize(size) {
-    window.photoSize = size;
-    localStorage.setItem('photoSize', size);
-    if (TreeRenderer.render) TreeRenderer.render();
-}
-
-// Initialize context menu
-function initContextMenu() {
-    const menu = document.getElementById('context-menu');
-
-    // Hide menu on click elsewhere
-    document.addEventListener('click', () => {
-        menu.classList.remove('active');
-    });
-
-    // Context menu items
-    document.getElementById('ctx-add-spouse').addEventListener('click', () => {
-        if (AppState.selectedPersonId) {
-            Forms.openSpouseModal(AppState.selectedPersonId);
-        }
-    });
-
-    document.getElementById('ctx-add-child').addEventListener('click', () => {
-        if (AppState.selectedPersonId) {
-            Forms.openChildModal(AppState.selectedPersonId);
-        }
-    });
-
-    document.getElementById('ctx-edit').addEventListener('click', () => {
-        if (AppState.selectedPersonId) {
-            Forms.openPersonModal(AppState.selectedPersonId);
-        }
-    });
-
-    document.getElementById('ctx-select-branch').addEventListener('click', () => {
-        if (AppState.selectedPersonId) {
-            const branchIds = new Set();
-            const queue = [AppState.selectedPersonId];
-
-            // Collect descendants and their spouses
-            while (queue.length > 0) {
-                const pid = queue.shift();
-                if (branchIds.has(pid)) continue;
-                branchIds.add(pid);
-
-                // Add spouses of this person (to keep couples together)
-                Object.values(AppState.tree.marriages).forEach(m => {
-                    if (m.spouse1_id === pid && !branchIds.has(m.spouse2_id)) branchIds.add(m.spouse2_id);
-                    if (m.spouse2_id === pid && !branchIds.has(m.spouse1_id)) branchIds.add(m.spouse1_id);
-                });
-
-                // Add children
-                AppState.tree.parent_child.forEach(pc => {
-                    if (pc.parent_id === pid) queue.push(pc.child_id);
-                });
-            }
-
-            AppState.selectedPersonIds = branchIds;
-            TreeRenderer.render();
-        }
-    });
-
-    document.getElementById('ctx-delete').addEventListener('click', async () => {
-        if (AppState.selectedPersonId && confirm('Are you sure you want to delete this person?')) {
-            try {
-                await API.deletePerson(AppState.selectedPersonId);
-                AppState.selectedPersonId = null;
-                document.getElementById('side-panel').classList.add('collapsed');
-                await loadTreeData();
-                showToast('Person deleted', 'success');
-            } catch (error) {
-                showToast('Delete failed', 'error');
-            }
-        }
-    });
-}
-
-// Show context menu
-function showContextMenu(x, y, personId) {
-    AppState.selectedPersonId = personId;
-    const menu = document.getElementById('context-menu');
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    menu.classList.add('active');
-}
-
-// Show side panel with person details
 function showPersonDetails(personId) {
-    const person = AppState.tree.persons[personId];
-    if (!person) return;
+    if (!AppState.tree.persons[personId]) return;
+    setSelection([personId], personId);
+    renderPanel(personId);
+    $('side-panel').classList.remove('collapsed');
+}
 
-    AppState.selectedPersonId = personId;
-
-    const panel = document.getElementById('side-panel');
-    const content = document.getElementById('panel-content');
-
-    // Get relationships
-    const marriages = Object.values(AppState.tree.marriages).filter(
-        m => m.spouse1_id === personId || m.spouse2_id === personId
+function relationRow(person, subtitle, extra = null) {
+    const row = el('button', { className: 'relation', type: 'button', onclick: () => {
+        showPersonDetails(person.id);
+        TreeRenderer.panTo(person.id);
+    } },
+        avatarEl(person),
+        el('div', { className: 'relation-text' },
+            el('div', { className: 'relation-name', text: person.name }),
+            subtitle ? el('div', { className: 'relation-sub', text: subtitle }) : null
+        ),
+        extra
     );
+    return row;
+}
 
-    const childRelations = AppState.tree.parent_child.filter(
-        pc => pc.parent_id === personId
-    );
+function renderPanel(personId) {
+    const tree = AppState.tree;
+    const person = tree.persons[personId];
+    const content = $('panel-content');
+    if (!person) { content.replaceChildren(); return; }
 
-    const parentRelations = AppState.tree.parent_child.filter(
-        pc => pc.child_id === personId
-    );
+    const marriages = Object.values(tree.marriages).filter(m => m.spouse1_id === personId || m.spouse2_id === personId);
+    const children = tree.parent_child.filter(pc => pc.parent_id === personId).map(pc => tree.persons[pc.child_id]).filter(Boolean);
+    const parents = tree.parent_child.filter(pc => pc.child_id === personId).map(pc => tree.persons[pc.parent_id]).filter(Boolean);
+    const span = lifeSpan(person);
 
-    let html = `
-        <div style="text-align: center; margin-bottom: 20px;">
-            ${person.photo_path ?
-            `<img src="/uploads/${person.photo_path.split('/').pop()}" class="node-photo" style="width: 80px; height: 80px; margin-bottom: 10px;">` :
-            ''
-        }
-            <h3 style="margin: 0;">${person.name}</h3>
-            <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">
-                ${person.date_of_birth ? `b. ${person.date_of_birth}` : ''}
-                ${person.date_of_death ? ` - d. ${person.date_of_death}` : ''}
-            </p>
-        </div>
-    `;
+    const fragments = [
+        el('div', { className: 'profile' },
+            avatarEl(person),
+            el('h2', { text: person.name }),
+            span ? el('div', { className: 'dates', text: span }) : null,
+            el('div', { className: 'profile-actions' },
+                el('button', { className: 'btn btn-outline btn-sm', onclick: () => Forms.openSpouseModal(personId) }, icon('heart'), 'Spouse'),
+                el('button', { className: 'btn btn-outline btn-sm', onclick: () => Forms.openChildModal(personId) }, icon('user-plus'), 'Child'),
+                el('button', { className: 'btn btn-outline btn-sm', onclick: () => Forms.openPersonModal(personId) }, icon('edit'), 'Edit'),
+                el('button', { className: 'btn btn-sm btn-danger', title: 'Delete', onclick: () => deletePersons([personId]) }, icon('trash'))
+            )
+        )
+    ];
 
     if (person.notes) {
-        html += `
-            <div class="form-group">
-                <label>Notes</label>
-                <p style="font-size: 13px;">${person.notes}</p>
-            </div>
-        `;
+        fragments.push(el('div', { className: 'section' },
+            el('div', { className: 'section-title', text: 'Notes' }),
+            el('div', { className: 'notes', text: person.notes })
+        ));
     }
 
-    // Spouses
-    if (marriages.length > 0) {
-        html += `<div class="form-group"><label>Spouses</label>`;
-        marriages.forEach(m => {
-            const spouseId = m.spouse1_id === personId ? m.spouse2_id : m.spouse1_id;
-            const spouse = AppState.tree.persons[spouseId];
-            if (spouse) {
-                const marriageDate = m.marriage_date ? ` (⚭ ${m.marriage_date})` : '';
-                html += `
-                    <div style="padding: 6px 0; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-                        <span>${spouse.name}${marriageDate}</span>
-                        <button class="btn btn-sm" onclick="Forms.openEditMarriageModal('${m.id}')" title="Edit marriage date">✏️</button>
-                    </div>
-                `;
-            }
-        });
-        html += `</div>`;
+    if (marriages.length) {
+        fragments.push(el('div', { className: 'section' },
+            el('div', { className: 'section-title', text: marriages.length > 1 ? 'Spouses' : 'Spouse' }),
+            ...marriages.map(m => {
+                const spouse = tree.persons[m.spouse1_id === personId ? m.spouse2_id : m.spouse1_id];
+                if (!spouse) return null;
+                const editBtn = el('button', { className: 'btn btn-icon btn-sm', title: 'Edit marriage', onclick: (e) => {
+                    e.stopPropagation();
+                    Forms.openEditMarriageModal(m.id);
+                } }, icon('edit'));
+                return relationRow(spouse, m.marriage_date ? `Married ${m.marriage_date}` : 'Married', editBtn);
+            })
+        ));
     }
 
-    // Children
-    if (childRelations.length > 0) {
-        html += `<div class="form-group"><label>Children</label>`;
-        childRelations.forEach(pc => {
-            const child = AppState.tree.persons[pc.child_id];
-            if (child) {
-                html += `<div style="padding: 6px 0; font-size: 13px;">${child.name}</div>`;
-            }
-        });
-        html += `</div>`;
+    if (parents.length) {
+        fragments.push(el('div', { className: 'section' },
+            el('div', { className: 'section-title', text: 'Parents' }),
+            ...parents.map(p => relationRow(p, lifeSpan(p)))
+        ));
     }
 
-    // Parents
-    if (parentRelations.length > 0) {
-        html += `<div class="form-group"><label>Parents</label>`;
-        parentRelations.forEach(pc => {
-            const parent = AppState.tree.persons[pc.parent_id];
-            if (parent) {
-                html += `<div style="padding: 6px 0; font-size: 13px;">${parent.name}</div>`;
-            }
-        });
-        html += `</div>`;
+    if (children.length) {
+        fragments.push(el('div', { className: 'section' },
+            el('div', { className: 'section-title', text: 'Children' }),
+            ...children.map(c => relationRow(c, lifeSpan(c)))
+        ));
     }
 
-    html += `
-        <div style="margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn btn-sm" onclick="Forms.openSpouseModal('${personId}')">Add Spouse</button>
-            <button class="btn btn-sm" onclick="Forms.openChildModal('${personId}')">Add Child</button>
-            <button class="btn btn-sm" onclick="Forms.openPersonModal('${personId}')">Edit</button>
-        </div>
-    `;
-
-    content.innerHTML = html;
-    panel.classList.remove('collapsed');
-
-    TreeRenderer.render();
+    content.replaceChildren(...fragments);
 }
 
-// Initialize app
+// ---------------------------------------------------------------------------
+// Context menu
+// ---------------------------------------------------------------------------
+function showContextMenu(x, y, personId) {
+    AppState.selectedPersonId = personId;
+    const menu = $('context-menu');
+    menu.classList.add('active');
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 8);
+    const top = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+}
+
+function hideContextMenu() {
+    $('context-menu').classList.remove('active');
+}
+
+function initContextMenu() {
+    document.addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('#context-menu')) hideContextMenu();
+    });
+    window.addEventListener('blur', hideContextMenu);
+
+    const withSelected = (fn) => () => {
+        hideContextMenu();
+        if (AppState.selectedPersonId) fn(AppState.selectedPersonId);
+    };
+    $('ctx-add-spouse').addEventListener('click', withSelected(id => Forms.openSpouseModal(id)));
+    $('ctx-add-child').addEventListener('click', withSelected(id => Forms.openChildModal(id)));
+    $('ctx-edit').addEventListener('click', withSelected(id => Forms.openPersonModal(id)));
+    $('ctx-select-branch').addEventListener('click', withSelected(id => selectBranch(id)));
+    $('ctx-delete').addEventListener('click', withSelected(id => {
+        const ids = AppState.selectedPersonIds.has(id) && AppState.selectedPersonIds.size > 1
+            ? [...AppState.selectedPersonIds] : [id];
+        deletePersons(ids);
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Dropdown menus
+// ---------------------------------------------------------------------------
+function initMenus() {
+    document.querySelectorAll('.menu').forEach(menu => {
+        const btn = menu.querySelector('button');
+        const list = menu.querySelector('.menu-list');
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = list.classList.toggle('active');
+            btn.setAttribute('aria-expanded', String(open));
+        });
+        list.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                list.classList.remove('active');
+                btn.setAttribute('aria-expanded', 'false');
+            });
+        });
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.menu')) return;
+        document.querySelectorAll('.menu-list.active').forEach(l => l.classList.remove('active'));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('theme', theme); } catch (e) { /* private mode */ }
+    const sun = document.querySelector('#theme-btn .theme-sun');
+    const moon = document.querySelector('#theme-btn .theme-moon');
+    sun.classList.toggle('hidden', theme === 'light');
+    moon.classList.toggle('hidden', theme === 'dark');
+    $('theme-btn').title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+}
+
+// ---------------------------------------------------------------------------
+// Settings (appearance)
+// ---------------------------------------------------------------------------
+function loadSettings() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('ftb.settings') || 'null');
+        if (saved && typeof saved === 'object') AppState.settings = { ...DEFAULT_SETTINGS, ...saved };
+    } catch (e) { /* ignore corrupt storage */ }
+    applySettings(AppState.settings, false);
+}
+
+function applySettings(settings, persist = true) {
+    AppState.settings = { ...DEFAULT_SETTINGS, ...settings };
+    const s = AppState.settings;
+    const root = document.documentElement.style;
+
+    if (s.colors) {
+        root.setProperty('--male', s.colors.male);
+        root.setProperty('--female', s.colors.female);
+        root.setProperty('--unknown', s.colors.unknown);
+    } else {
+        root.removeProperty('--male');
+        root.removeProperty('--female');
+        root.removeProperty('--unknown');
+    }
+    root.setProperty('--node-font-size', `${s.fontSize}px`);
+    root.setProperty('--node-font-family', s.fontFamily);
+
+    TreeRenderer.nodeWidth = s.nodeWidth;
+    TreeRenderer.avatarSize = s.photoSize;
+    if (TreeRenderer.svg) TreeRenderer.render();
+
+    if (persist) {
+        try { localStorage.setItem('ftb.settings', JSON.stringify(s)); } catch (e) { /* ignore */ }
+    }
+}
+
+function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function openSettingsModal() {
+    const s = AppState.settings;
+    const colors = s.colors || { male: cssVar('--male'), female: cssVar('--female'), unknown: cssVar('--unknown') };
+    $('color-male').value = colors.male;
+    $('color-female').value = colors.female;
+    $('color-unknown').value = colors.unknown;
+    $('node-size').value = s.nodeWidth;
+    $('node-size-value').textContent = s.nodeWidth;
+    $('photo-size').value = s.photoSize;
+    $('photo-size-value').textContent = s.photoSize;
+    $('font-size').value = s.fontSize;
+    $('font-size-value').textContent = s.fontSize;
+    $('font-family').value = s.fontFamily;
+    if ($('font-family').value !== s.fontFamily) $('font-family').selectedIndex = 0;
+    Modal.open('settings-modal');
+}
+
+function initSettings() {
+    const swatches = $('palette-swatches');
+    for (const [key, p] of Object.entries(PALETTES)) {
+        const btn = el('button', { className: 'swatch', type: 'button', dataset: { palette: key } },
+            el('i', { style: `background:${p.male}` }), el('i', { style: `background:${p.female}` }), el('i', { style: `background:${p.unknown}` }),
+            p.label
+        );
+        btn.addEventListener('click', () => {
+            $('color-male').value = p.male;
+            $('color-female').value = p.female;
+            $('color-unknown').value = p.unknown;
+        });
+        swatches.append(btn);
+    }
+
+    for (const [slider, label] of [['node-size', 'node-size-value'], ['photo-size', 'photo-size-value'], ['font-size', 'font-size-value']]) {
+        $(slider).addEventListener('input', (e) => { $(label).textContent = e.target.value; });
+    }
+
+    $('settings-save-btn').addEventListener('click', () => {
+        applySettings({
+            colors: { male: $('color-male').value, female: $('color-female').value, unknown: $('color-unknown').value },
+            nodeWidth: parseInt($('node-size').value, 10),
+            photoSize: parseInt($('photo-size').value, 10),
+            fontSize: parseInt($('font-size').value, 10),
+            fontFamily: $('font-family').value
+        });
+        Modal.close('settings-modal');
+        showToast('Appearance updated', 'success');
+    });
+
+    $('settings-reset-btn').addEventListener('click', () => {
+        applySettings({ ...DEFAULT_SETTINGS });
+        Modal.close('settings-modal');
+        showToast('Appearance reset', 'info');
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar and keyboard
+// ---------------------------------------------------------------------------
+function initToolbar() {
+    $('new-tree-btn').addEventListener('click', newTree);
+    $('export-json-btn').addEventListener('click', exportJson);
+    $('import-json-btn').addEventListener('click', importJson);
+    $('empty-import-btn').addEventListener('click', importJson);
+    $('clear-btn').addEventListener('click', async () => {
+        if (personCount() === 0) { showToast('The canvas is already empty', 'info'); return; }
+        const ok = await confirmDialog({
+            title: 'Clear the canvas?',
+            message: `All ${personCount()} people and their relationships will be removed. You can undo this.`,
+            confirmText: 'Clear',
+            danger: true
+        });
+        if (!ok) return;
+        await API.newTree();
+        setSelection([]);
+        hidePanel();
+        await loadTreeData();
+        showToast('Canvas cleared', 'success');
+    });
+
+    $('add-person-btn').addEventListener('click', () => Forms.openPersonModal());
+    $('empty-add-btn').addEventListener('click', () => Forms.openPersonModal());
+    $('undo-btn').addEventListener('click', doUndo);
+    $('redo-btn').addEventListener('click', doRedo);
+
+    $('auto-layout-btn').addEventListener('click', () => {
+        if (personCount() === 0) { showToast('Add some people first', 'info'); return; }
+        Forms.openLayoutModal();
+    });
+    $('export-btn').addEventListener('click', () => Exporter.open());
+    $('export-btn-top').addEventListener('click', () => Exporter.open());
+    $('settings-btn').addEventListener('click', openSettingsModal);
+    $('theme-btn').addEventListener('click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
+    $('close-panel').addEventListener('click', () => { hidePanel(); });
+
+    $('zoom-in-btn').addEventListener('click', () => TreeRenderer.zoomBy(1.25));
+    $('zoom-out-btn').addEventListener('click', () => TreeRenderer.zoomBy(1 / 1.25));
+    $('fit-btn').addEventListener('click', () => TreeRenderer.fitToContent());
+    $('zoom-level').addEventListener('click', () => TreeRenderer.setZoom(1));
+}
+
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', async (e) => {
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
+
+        if (e.key === 'Escape') {
+            hideContextMenu();
+            if (Modal.closeTop()) { e.preventDefault(); return; }
+            clearSelection();
+            return;
+        }
+
+        if (mod && key === 's') { e.preventDefault(); exportJson(); return; }
+        if (mod && key === 'o') { e.preventDefault(); importJson(); return; }
+
+        if (isTyping() || Modal.isOpen()) return;
+
+        if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); return; }
+        if ((mod && key === 'z' && e.shiftKey) || (mod && key === 'y')) { e.preventDefault(); doRedo(); return; }
+        if (mod && key === 'a') {
+            e.preventDefault();
+            setSelection(Object.keys(AppState.tree.persons));
+            return;
+        }
+        if (mod) return;
+
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            const ids = AppState.selectedPersonIds.size ? [...AppState.selectedPersonIds]
+                : (AppState.selectedPersonId ? [AppState.selectedPersonId] : []);
+            if (ids.length) { e.preventDefault(); deletePersons(ids); }
+            return;
+        }
+        if (key === 'n') { e.preventDefault(); Forms.openPersonModal(); return; }
+        if (key === 'f') { e.preventDefault(); TreeRenderer.fitToContent(); return; }
+        if (key === '+' || key === '=') { e.preventDefault(); TreeRenderer.zoomBy(1.25); return; }
+        if (key === '-') { e.preventDefault(); TreeRenderer.zoomBy(1 / 1.25); return; }
+        if (key === 'e' && AppState.selectedPersonId) { e.preventDefault(); Forms.openPersonModal(AppState.selectedPersonId); }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-    initDropdowns();
-    initKeyboardShortcuts();
-    initToolbar();
+    applyTheme(currentTheme());
+    Modal.init();
+    initMenus();
     initContextMenu();
+    initToolbar();
+    initKeyboardShortcuts();
     initSettings();
 
-    // Initialize renderer and forms after DOM is ready
     TreeRenderer.init();
     Forms.init();
+    Exporter.init();
+    loadSettings();
 
-    // Load initial data
-    loadTreeData();
+    loadTreeData({ fit: true });
 });
 
-// Export for use by other modules
 window.AppState = AppState;
 window.API = API;
 window.showToast = showToast;
