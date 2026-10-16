@@ -3,6 +3,20 @@
 A lightweight, web-based tool for creating, visualising and sharing family trees. FastAPI on the
 back end, plain HTML/CSS/JS on the front end, no database and no build step.
 
+## Try it
+
+A public demo runs at <https://family-tree-cbk5.onrender.com/>. It is on a free tier, so the first
+load after a quiet spell can take up to a minute.
+
+**Privacy, in short.** This is a scratchpad, not storage.
+
+- Each browser gets its own tree. Nobody else can see what you enter.
+- Nothing is kept on the server. Your tree lives in memory and is wiped when you are idle for a
+  while or the instance restarts, which on the free tier happens after 15 minutes without visitors.
+- To keep your work, use **File → Save as JSON**; that file includes photos and can be reopened
+  later with **File → Open JSON**. **File → Export** gives you a PNG, JPG or PDF for sharing or
+  printing, but those cannot be loaded back into the app.
+
 ## Features
 
 - **Interactive canvas**: drag people, pan and zoom, pinch on touch screens, multi-select and move
@@ -42,9 +56,15 @@ docker run -p 8000:8000 family-tree
 The image is a single `python:3.12-slim` stage with four Python packages and no system libraries.
 It honours a `PORT` environment variable and runs as a non-root user.
 
-### Render.com
+### Render.com (free)
 
-Push to GitHub, create a Web Service from the repo and Render will pick up `render.yaml`.
+1. Push your code to GitHub
+2. Sign up at [render.com](https://render.com)
+3. Create a new "Web Service" and connect your GitHub repo
+4. Render will auto-detect `render.yaml` and deploy
+
+Free instances spin down after 15 minutes without traffic. Because trees live in server memory,
+anyone mid-session loses unsaved work when that happens, so save as JSON often.
 
 ## Project layout
 
